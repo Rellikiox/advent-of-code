@@ -12,7 +12,8 @@ def main():
         with open(args.input, 'r') as input_file:
             lines = [line.strip() for line in input_file]
             nodes = get_nodes(lines)
-            print find_shortest(nodes)
+            print find_best_route(nodes, lambda x, y: x < y)
+            print find_best_route(nodes, lambda x, y: x > y)
 
 
 def get_nodes(inputs):
@@ -30,12 +31,12 @@ def parse_line(route):
     return start, end, length
 
 
-def find_shortest(nodes):
+def find_best_route(nodes, comparator):
     all_routes = itertools.permutations(nodes.keys())
     shortest = None
     for route in all_routes:
         route_length = calculate_route_length(route, nodes)
-        if not shortest or route_length < shortest:
+        if not shortest or comparator(route_length, shortest):
             shortest = route_length
     return shortest
 
