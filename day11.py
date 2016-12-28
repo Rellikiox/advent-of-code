@@ -1,4 +1,5 @@
 
+from profilehooks import profile
 from collections import namedtuple
 import copy
 import re
@@ -54,8 +55,16 @@ class State(object):
         )
 
     def do_action(self, action):
-        for item in action.items:
-            item_name = item[1:]
+        item, item_name = action.items[0], action.items[1]
+        if 'm' in item:
+            self.floors[action.origin].microchips.remove(item_name)
+            self.floors[action.dest].microchips.append(item_name)
+        else:
+            self.floors[action.origin].generators.remove(item_name)
+            self.floors[action.dest].generators.append(item_name)
+
+        if len(action.items) > 2:
+            item, item_name = action.items[2], action.items[3]
             if 'm' in item:
                 self.floors[action.origin].microchips.remove(item_name)
                 self.floors[action.dest].microchips.append(item_name)
@@ -98,22 +107,45 @@ class State(object):
                 for g in floor.generators
             )
         )
-        # print is_valid, self.hash()
         return is_valid
 
     def get_posible_actions(self, adjacent_floors):
-        movable_items = [[item] for item in self.items_in_floor(self.current_floor)]
+        floor = self.floors[self.current_floor]
+        all_items = (
+            ['m{}'.format(m) for m in floor.microchips] +
+            ['g{}'.format(g) for g in floor.generators]
+        )
+        combinations = [i1 + i2 for i1 in all_items for i2 in all_items]
+        movable_items = []
+        single_items_in_combinations = set()
+        for i in combinations:
+            if (
+                    i[:2] != i[2:] and
+                    (i[0] == i[2] or i[1] == i[3]) and
+                    i[2:] + i[:2] not in movable_items
+            ):
+                movable_items.append(i)
+                single_items_in_combinations.add(i[:2])
+                single_items_in_combinations.add(i[2:])
 
-        for m in self.floors[self.current_floor].microchips:
-            if m in self.floors[self.current_floor].generators:
-                movable_items.append(['m{}'.format(m), 'g{}'.format(m)])
+        all_items = [i for i in all_items]
+        movable_items.extend(all_items)
 
-        # Get list of posible actions
-        actions = [
-            State.Action(self.current_floor, floor_idx, item_list)
-            for floor_idx in adjacent_floors
-            for item_list in movable_items
-        ]
+        actions = []
+        if self.current_floor > 0:
+            actions.extend([
+                State.Action(self.current_floor, self.current_floor - 1, item_list)
+                for item_list in all_items
+            ])
+        if self.current_floor < len(self.floors) - 1:
+            items_going_up = movable_items + [i for i in all_items if i not in single_items_in_combinations]
+            actions.extend([
+                State.Action(self.current_floor, self.current_floor + 1, item_list)
+                for item_list in items_going_up
+            ])
+
+        # print self
+        # print actions
 
         return actions
 
@@ -153,6 +185,7 @@ class State(object):
 ----------""".format(self.steps, floor_str)
 
 
+@profile(immediate=True)
 def steps_to_fourth_floor(input):
     available_states = [State.from_rules(input.split('\n'))]
     visited_states = set()
@@ -170,7 +203,7 @@ def steps_to_fourth_floor(input):
 
         visited_states.add(state.hash())
         states_processed += 1
-        if states_processed % 10000 == 0:
+        if states_processed % 1000 == 0:
             print states_processed
 
     return None
