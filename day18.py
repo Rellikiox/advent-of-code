@@ -16,16 +16,16 @@ The above example expands to
 
 after two rows.
 
-000 no trap
-001 trap
-010 no trap
-011 trap
-100 trap
-101 no trap
-110 trap
-111 no trap
+0b000 no trap
+0b001 trap
+0b010 no trap
+0b011 trap
+0b100 trap
+0b101 no trap
+0b110 trap
+0b111 no trap
 
-    0 != 2
+    n & 1 != (n >> 2) & 1
 """
 
 from profilehooks import profile
@@ -164,26 +164,51 @@ class NoTrioMap(HistoryMap):
 
 
 class BinaryMap(object):
+    """
+    Small map is
+        00110
+        01111
+        11001
+
+    # Getting the trio
+    00110 must yield
+    000 - 0b00110 >> 3 -> 4 - 1
+    001 - 0b00110 >> 2 -> 3 - 1
+    011 - 0b00110 >> 1 -> 2 - 1
+    110 - 0b00110 >> 0 -> 1 - 1
+    100 - 0b00110 << 1 -> 0 - 1
+
+    # Getting the traps
+    for each trio do bin(n & 1 != (n >> 2) & 1) to get the next row
+
+    """
+
     @classmethod
     def get_map(cls, row, size):
+
         row_len = len(row)
-        row = bin(int(row.replace('.', '0').replace('^', '1'), 2))
+        row = int(row.replace('.', '0').replace('^', '1'), 2)
         history = {}
         total_trap_tiles = bin(row).count('1')
         rows = 1
         while rows < size:
             if row not in history:
-                new_row = ''
-                for idx in range(row_len):
-                    bit0 = row[idx - 1] if idx > 0 else '.'
-                    bit2 = row[idx + 1] if idx < row_len - 1 else '.'
-                    new_row += '^' if bit0 != bit2 else '.'
-                n_safe_tiles = new_row.count('.')
-                history[row] = (new_row, n_safe_tiles)
+
+                # Do this on first since it needs left shift while the others need right shift
+                shifted_bits = row << 1
+                new_row = shifted_bits & 1 != (shifted_bits >> 2) & 1
+                for idx in xrange(1, row_len):
+                    shifted_bits = row >> (idx - 1)
+                    new_row += (shifted_bits & 1 != (shifted_bits >> 2) & 1) << idx
+
+                n_traps = bin(new_row).count('1')
+                history[row] = (new_row, n_traps)
+
             else:
-                new_row, n_safe_tiles = history[row]
+                new_row, n_traps = history[row]
+            # import pdb; pdb.set_trace()
             row = new_row
-            total_trap_tiles += n_safe_tiles
+            total_trap_tiles += n_traps
             rows += 1
         return (row_len * size) - total_trap_tiles
 
