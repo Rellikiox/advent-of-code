@@ -163,6 +163,27 @@ class NoTrioMap(HistoryMap):
         return total_safe_tiles
 
 
+class NoTrioNoHistoryMap(HistoryMap):
+    """Takes ~11s for 400K lines"""
+    @classmethod
+    def get_map(cls, row, size):
+        total_safe_tiles = row.count('.')
+        row_len = len(row)
+        rows = 1
+        while rows < size:
+            new_row = ''
+            for idx in range(row_len):
+                bit0 = row[idx - 1] if idx > 0 else '.'
+                bit2 = row[idx + 1] if idx < row_len - 1 else '.'
+                new_row += '^' if bit0 != bit2 else '.'
+            n_safe_tiles = new_row.count('.')
+
+            row = new_row
+            total_safe_tiles += n_safe_tiles
+            rows += 1
+        return total_safe_tiles
+
+
 class BinaryMap(object):
     """
     Small map is
@@ -211,6 +232,72 @@ class BinaryMap(object):
             total_trap_tiles += n_traps
             rows += 1
         return (row_len * size) - total_trap_tiles
+
+
+class BinaryNoHistoryMap(object):
+    """
+    Drop the map
+
+    instead of a rolling mask just shif left and right and do a XOR
+
+    row     1110001001
+    rshift  0111000100
+    lshift  1100010010
+    xor     1011010110
+
+    row     01111
+    rshift  00111
+    lshift  11110
+    xor     11001
+
+    """
+    @classmethod
+    def get_map(cls, row, size):
+        row_len = len(row)
+        mask = 2 ** row_len - 1
+        row = int(row.replace('.', '0').replace('^', '1'), 2)
+        total_trap_tiles = bin(row).count('1')
+        for i in xrange(1, size):
+            row = ((row >> 1) ^ (row << 1)) & mask
+            total_trap_tiles += bin(row).count('1')
+
+        return (row_len * size) - total_trap_tiles
+
+
+class FromReddit(object):
+    @staticmethod
+    def get_map(start, size):
+        traps = [[char=='^' for char in start]]
+        for rowNum in range(1, size):
+            traps.append([])
+            for tileNum in range(len(traps[0])):
+                if tileNum == 0:
+                    tileL = False
+                else:
+                    tileL = traps[rowNum-1][tileNum-1]
+                if tileNum == len(traps[0])-1:
+                    tileR = False
+                else:
+                    tileR = traps[rowNum-1][tileNum+1]
+                if int(tileR+tileL) == 1:
+                    traps[rowNum].append(True)
+                else:
+                    traps[rowNum].append(False)
+
+        safeCounts = [row.count(False) for row in traps]
+        return sum(safeCounts)
+
+
+class FromRedditComprehension(object):
+    @staticmethod
+    def get_map(start, size):
+        traps = [[char == '^' for char in start]]
+        for rowNum in range(1, size):
+            traps.append([
+                traps[-1][1] if tileNum == 0 else traps[-1][-2] if tileNum == (len(traps[0])-1) else traps[-1][tileNum-1] != traps[-1][tileNum+1]
+                for tileNum in range(len(traps[0]))
+            ])
+        return sum([row.count(False) for row in traps])
 
 
 @profile(immediate=True)
