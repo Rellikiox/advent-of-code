@@ -1,6 +1,7 @@
-
+import pprint
 from collections import namedtuple
 import re
+import math
 
 
 test_input = """root@ebhq-gridcenter# df -h
@@ -12,6 +13,18 @@ Filesystem              Size  Used  Avail  Use%
 
 node_re = r'/dev/grid/node-x(\d+)-y(\d+)\s+\d+T\s+(\d+)T\s+(\d+)T\s+\d+%'
 Node = namedtuple('Node', ['x', 'y', 'used', 'avail'])
+
+test_input = """root@ebhq-gridcenter# df -h
+Filesystem            Size  Used  Avail  Use%
+/dev/grid/node-x0-y0   10T    8T     2T   80%
+/dev/grid/node-x0-y1   11T    6T     5T   54%
+/dev/grid/node-x0-y2   32T   28T     4T   87%
+/dev/grid/node-x1-y0    9T    7T     2T   77%
+/dev/grid/node-x1-y1    8T    0T     8T    0%
+/dev/grid/node-x1-y2   11T    7T     4T   63%
+/dev/grid/node-x2-y0   10T    6T     4T   60%
+/dev/grid/node-x2-y1    9T    8T     1T   88%
+/dev/grid/node-x2-y2    9T    6T     3T   66%"""
 
 
 def parse_nodes(input):
@@ -50,6 +63,30 @@ def viable_pairs(nodes):
     return viable_pairs
 
 
+def print_map(nodes, can_be_emptied, can_be_filled):
+    x_len = max(n.x for n in nodes)
+    y_len = max(n.y for n in nodes)
+    nodes_2d = [
+        [None] * (x_len + 1)
+        for i in range(y_len + 1)
+    ]
+
+    for n in nodes:
+        nodes_2d[n.y][n.x] = n
+
+    print '\n'.join([
+        '\t'.join([
+            '[{}/{}]'.format(node.used, node.used + node.avail)
+            if node in can_be_emptied
+            else '({}/{})'.format(node.used, node.used + node.avail)
+            if node in can_be_filled
+            else '{}/{}'.format(node.used, node.used + node.avail)
+            for node in line
+        ])
+        for line in nodes_2d
+    ])
+
+
 def n_viable_pairs(input):
     node_list = parse_nodes(input)
     # print node_list
@@ -57,9 +94,13 @@ def n_viable_pairs(input):
 
 
 def main():
-    node_list = parse_nodes(test_input)
-    # print node_list
-    print len(viable_pairs(node_list))
+    node_list = parse_nodes(open('day22input.txt').read())
+    pprint.pprint(viable_pairs(node_list))
+    print_map(
+        node_list,
+        set(p[0] for p in viable_pairs(node_list)),
+        set(p[1] for p in viable_pairs(node_list))
+    )
 
 
 if __name__ == '__main__':
