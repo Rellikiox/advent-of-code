@@ -34,7 +34,7 @@ def main():
                 if cell != '.':
                     number_locations[cell] = (row_idx, col_idx)
 
-    # Calculate shortest path lengths between pairs of points
+    # Calculate shortest path lengths between pairs of points via Breadth First Search
     target_numbers = number_locations.keys()
     sub_paths = {}
     for two_node_path in itertools.combinations(target_numbers, 2):
@@ -68,7 +68,8 @@ def main():
     min_path = float('inf')
     target_numbers.remove('0')
     for possible_path in itertools.permutations(target_numbers):
-        possible_path = ('0',) + possible_path
+        # Starting and ending at 0
+        possible_path = ('0',) + possible_path + ('0', )
         path_length = 0
         for i in range(len(possible_path) - 1):
             number_pair = (possible_path[i], possible_path[i + 1])
