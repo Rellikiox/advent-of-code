@@ -6,10 +6,10 @@ def load_memory():
 
 
 def redistribute_blocks(memory):
-    history = set()
+    history = {}
     iterations = 0
     while tuple(memory) not in history:
-        history.add(tuple(memory))
+        history[tuple(memory)] = iterations
 
         bank_to_redistribute = memory.index(max(memory))
         blocks_to_redistribute = memory[bank_to_redistribute]
@@ -21,11 +21,9 @@ def redistribute_blocks(memory):
             blocks_to_redistribute -= 1
             current_index += 1
 
-        print memory
         iterations += 1
 
-    print memory
-    return iterations
+    return iterations, iterations - history[tuple(memory)]
 
 
 def main():
