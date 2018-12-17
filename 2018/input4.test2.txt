@@ -1,0 +1,6 @@
+[1518-11-01 00:00] #1 begins shift
+[1518-11-01 00:10] falls asleep
+[1518-11-01 00:20] wakes up
+[1518-11-02 00:00] falls asleep
+[1518-11-02 00:00] #2 begins shift
+[1518-11-02 00:05] wakes up
