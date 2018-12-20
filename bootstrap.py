@@ -23,6 +23,7 @@ if __name__ == '__main__':
 """
 source_filename = 'day{}.py'
 input_filename = 'input{}.txt'
+instructions_filename = 'instructions{}.txt'
 config_file = 'config.yaml'
 instructions_url = 'https://adventofcode.com/{}/day/{}'
 input_url = instructions_url + '/input'
@@ -46,6 +47,11 @@ def main(year, day):
         response = requests.get(input_url.format(year, day), cookies=cookies)
         with open(input_file_path, 'w') as stream:
             stream.write(response.text)
+
+    indtructions_file_path = os.path.join(year, instructions_filename.format(day))
+    response = requests.get(instructions_url.format(year, day))
+    with open(indtructions_file_path, 'w') as stream:
+        stream.write(response.text)
 
     print instructions_url.format(year, day)
 
