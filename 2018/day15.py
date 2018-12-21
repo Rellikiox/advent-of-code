@@ -1,4 +1,5 @@
 
+import time
 import cProfile
 from collections import deque
 import math
@@ -9,17 +10,18 @@ import curses
 
 
 class Position(object):
+    __slots__ = 'x', 'y', '_hash'
+
     def __init__(self, x, y):
         self.x = x
         self.y = y
+        self._hash = hash((self.x, self.y))
 
     def __eq__(self, other):
-        if isinstance(other, Position):
-            return (self.x, self.y) == (other.x, other.y)
-        return False
+        return (self.x, self.y) == (other.x, other.y)
 
     def __hash__(self):
-        return hash((self.x, self.y))
+        return self._hash
 
     def __repr__(self):
         return str((self.x, self.y))
@@ -30,6 +32,8 @@ class Entity(object):
         self.x = x
         self.y = y
         self.race = race
+        self.hitpoints = 200
+        self.is_alive = True
 
     @property
     def position(self):
@@ -61,14 +65,14 @@ class Cavern(object):
 
     def __init__(self, graph, entities, screen):
         self.graph = graph
+        self.ground_positions = set(key for key, value in graph.iteritems() if value == '.')
         self.entities = entities
-        self.map_height = max(coord.y for coord in self.graph.keys())
+        self.map_height = max(self.graph.keys(), key=attrgetter('y')).y
+        self.map_width = max(self.graph.keys(), key=attrgetter('x')).x
         self.screen = screen
         self.flow_fields = {}
 
     def draw(self):
-        self.screen.clear()
-
         # Map
         for coord, value in self.graph.iteritems():
             self.screen.addch(coord.y, coord.x, value)
@@ -76,7 +80,8 @@ class Cavern(object):
         for idx, entity in enumerate(self.initiative_order()):
             self.screen.addch(entity.y, entity.x, entity.race)
 
-        self.screen.refresh()
+        for idx, entity in enumerate(self.entities):
+            self.screen.addstr(idx, self.map_width + 2, str(entity.hitpoints))
 
     @property
     def elves(self):
@@ -88,13 +93,23 @@ class Cavern(object):
 
     def step(self):
         for entity in self.initiative_order():
-            self.elf_positions = set(entity.position for entity in self.elves)
-            self.goblin_positions = set(entity.position for entity in self.goblins)
-            self.occupied = self.elf_positions.union(self.goblin_positions)
+            if not entity.is_alive:
+                continue
+
+            self.elf_positions = {
+                entity.position: entity for entity in self.elves if entity.is_alive
+            }
+            self.goblin_positions = {
+                entity.position: entity for entity in self.goblins if entity.is_alive
+            }
+            self.occupied = set(self.elf_positions.keys() + self.goblin_positions.keys())
+            self.valid_positions = self.ground_positions.difference(self.occupied)
             if not self.can_attack(entity):
                 self.move(entity)
 
             self.attack(entity)
+
+        self.entities = [entity for entity in self.entities if entity.is_alive]
 
     def can_attack(self, entity):
         if entity.race == 'G':
@@ -118,7 +133,18 @@ class Cavern(object):
             self.flow_fields = {}
 
     def attack(self, entity):
-        pass
+        enemies = self.elf_positions if entity.race == 'G' else self.goblin_positions
+        try:
+            target = sorted(
+                [enemies[neighbour] for neighbour in self.neighbours(entity) if neighbour in enemies],
+                key=attrgetter('hitpoints', 'y', 'x')
+            )[0]
+        except IndexError:
+            return
+
+        target.hitpoints -= 3
+        if target.hitpoints <= 0:
+            target.is_alive = False
 
     def enemies(self, entity):
         if entity.race == 'G':
@@ -131,7 +157,7 @@ class Cavern(object):
             position
             for target in targets
             for position in self.neighbours(target.position)
-            if self.is_valid(position)
+            if position in self.valid_positions
         ]
 
     def closest(self, entity, positions):
@@ -190,10 +216,10 @@ class Cavern(object):
             current, node_distance = frontier.popleft()
             new_distance = node_distance + 1
             for neighbour in self.neighbours(current):
-                if not self.is_valid(neighbour):
+                if neighbour not in self.valid_positions:
                     continue
 
-                parents, distance = came_from.get(neighbour, ([], float('inf')))
+                parents, distance = came_from.get(neighbour, ([], 999))
                 if new_distance <= distance and current not in parents:
                     frontier.append((neighbour, new_distance))
                     parents.append(current)
@@ -212,17 +238,11 @@ class Cavern(object):
 
     def neighbours(self, target):
         return [
-            position for position in [
-                Position(target.x + change[0], target.y + change[1])
-                for change in [(0, -1), (1, 0), (0, 1), (-1, 0)]
-            ]
+            Position(target.x, target.y - 1),
+            Position(target.x + 1, target.y),
+            Position(target.x, target.y + 1),
+            Position(target.x - 1, target.y)
         ]
-
-    def is_valid(self, position):
-        return (
-            self.graph[position] != '#' and
-            position not in self.occupied
-        )
 
 
 def main(screen, input_filename):
@@ -230,17 +250,28 @@ def main(screen, input_filename):
         cavern = Cavern.from_input(stream.read().strip(), screen)
 
     command = 'c'
+    iterations = 0
     while True:
+        if iterations == 32:
+            debug(screen)
+        loop_start = time.time()
         if screen:
             cavern.draw()
-            if command == 'c':
+            if command != 'r':
                 command = curses_raw_input(
-                    screen, cavern.map_height + 1, '[C]ontinue / [S]top / [R]un: '
+                    screen, cavern.map_height + 2, '[C]ontinue / [S]top / [R]un: '
                 ).lower()
             if command == 's':
                 break
         cavern.step()
+        time_diff = time.time() - loop_start
+        if time_diff < 0.16:
+            time.sleep(0.25 - time_diff)
 
+        iterations += 1
+        screen.addstr(cavern.map_height + 1, 0, 'Iteration {}'.format(iterations))
+        screen.refresh()
+        screen.clear()
     print 'Part 1:', None
     print 'Part 2:', None
 
@@ -264,7 +295,7 @@ def debug(stdscr):
 if __name__ == '__main__':
     if 'debug' in sys.argv:
         cProfile.run('main(None, "{}")'.format(sys.argv[1]))
-    if 'no_screen' in sys.argv:
+    elif 'no_screen' in sys.argv:
         main(None, sys.argv[1])
     else:
         curses.wrapper(main, sys.argv[1])
