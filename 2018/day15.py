@@ -9,6 +9,10 @@ from operator import attrgetter
 import curses
 
 
+class ElfDeath(Exception):
+    pass
+
+
 class Position(object):
     __slots__ = 'x', 'y', '_hash'
 
@@ -28,6 +32,9 @@ class Position(object):
 
 
 class Entity(object):
+    elf_power = 3
+    raise_exception = False
+
     def __init__(self, x, y, race):
         self.x = x
         self.y = y
@@ -46,6 +53,12 @@ class Entity(object):
     def move(self, position):
         self.x = position.x
         self.y = position.y
+
+    def get_hit(self):
+        self.hitpoints -= 3 if self.race == 'E' else self.elf_power
+        self.is_alive = self.hitpoints > 0
+        if self.race == 'E' and not self.is_alive and self.raise_exception:
+            raise ElfDeath()
 
 
 class Cavern(object):
@@ -80,8 +93,16 @@ class Cavern(object):
         for idx, entity in enumerate(self.initiative_order()):
             self.screen.addch(entity.y, entity.x, entity.race)
 
-        for idx, entity in enumerate(self.entities):
+        for idx, entity in enumerate(sorted(self.elves, key=attrgetter('hitpoints'))):
             self.screen.addstr(idx, self.map_width + 2, str(entity.hitpoints))
+        for idx, entity in enumerate(sorted(self.goblins, key=attrgetter('hitpoints'))):
+            self.screen.addstr(idx, self.map_width + 7, str(entity.hitpoints))
+
+    def war_is_finished(self):
+        return not self.elves or not self.goblins
+
+    def score(self):
+        return sum(entity.hitpoints for entity in self.entities)
 
     @property
     def elves(self):
@@ -124,9 +145,16 @@ class Cavern(object):
         chosen_in_range = self.closest(entity, in_range)
         if not chosen_in_range:
             return
+        entity_starts = [
+            neighbour for neighbour in self.neighbours(entity)
+            if neighbour in self.valid_positions and self.can_be_reached(chosen_in_range, neighbour)
+        ]
         paths = sorted(
-            self.paths_to(entity.position, chosen_in_range),
-            key=lambda path: (path[0].y, path[0].x)
+            [
+                self.paths_to(chosen_in_range, path_starts) + [path_starts]
+                for path_starts in entity_starts
+            ],
+            key=lambda path: (len(path), path[0].y, path[0].x)
         )
         if paths:
             entity.move(paths[0][0])
@@ -136,15 +164,16 @@ class Cavern(object):
         enemies = self.elf_positions if entity.race == 'G' else self.goblin_positions
         try:
             target = sorted(
-                [enemies[neighbour] for neighbour in self.neighbours(entity) if neighbour in enemies],
+                [
+                    enemies[neighbour]
+                    for neighbour in self.neighbours(entity) if neighbour in enemies
+                ],
                 key=attrgetter('hitpoints', 'y', 'x')
             )[0]
         except IndexError:
             return
 
-        target.hitpoints -= 3
-        if target.hitpoints <= 0:
-            target.is_alive = False
+        target.get_hit()
 
     def enemies(self, entity):
         if entity.race == 'G':
@@ -182,24 +211,13 @@ class Cavern(object):
         return end in flow_field
 
     def paths_to(self, start, end):
-        def recursive(nodes, target):
-            paths = []
-            for parent in nodes[target][0]:
-                child_paths = recursive(nodes, parent)
-                if child_paths:
-                    paths.extend([
-                        [target] + child_path
-                        for child_path in child_paths
-                    ])
-                else:
-                    paths.append([target])
-            return paths
-
         flow_field = self.get_flow_field(start)
-        return [
-            path[::-1]
-            for path in recursive(flow_field, end)
-        ]
+        path = [end]
+        node = flow_field[end]
+        while node[0] and start != node[0]:
+            path.append(node[0])
+            node = flow_field[node[0]]
+        return path
 
     def get_flow_field(self, start):
         if start not in self.flow_fields:
@@ -209,8 +227,9 @@ class Cavern(object):
     def make_flow_field(self, start):
         frontier = deque()
         frontier.append((start, 0))
-        came_from = {}
-        came_from[start] = [], 0
+        came_from = {
+            start: (None, 0)
+        }
 
         while frontier:
             current, node_distance = frontier.popleft()
@@ -219,11 +238,9 @@ class Cavern(object):
                 if neighbour not in self.valid_positions:
                     continue
 
-                parents, distance = came_from.get(neighbour, ([], 999))
-                if new_distance <= distance and current not in parents:
+                if neighbour not in came_from:
                     frontier.append((neighbour, new_distance))
-                    parents.append(current)
-                    came_from[neighbour] = parents, new_distance
+                    came_from[neighbour] = current, new_distance
 
         return came_from
 
@@ -245,15 +262,26 @@ class Cavern(object):
         ]
 
 
-def main(screen, input_filename):
+def main(screen, input_filename, is_part_2):
     with open(input_filename) as stream:
-        cavern = Cavern.from_input(stream.read().strip(), screen)
+        input_data = stream.read().strip()
+
+    while True:
+        if is_part_2:
+            Entity.elf_power += 1
+            Entity.raise_exception = True
+        try:
+            main_loop(screen, input_data)
+        except ElfDeath:
+            pass
+
+
+def main_loop(screen, input_data):
+    cavern = Cavern.from_input(input_data, screen)
 
     command = 'c'
     iterations = 0
     while True:
-        if iterations == 32:
-            debug(screen)
         loop_start = time.time()
         if screen:
             cavern.draw()
@@ -263,15 +291,23 @@ def main(screen, input_filename):
                 ).lower()
             if command == 's':
                 break
+
         cavern.step()
+        if cavern.war_is_finished():
+            curses_raw_input(
+                screen, cavern.map_height + 2,
+                'The final score is: {}'.format(iterations * cavern.score())
+            )
+
         time_diff = time.time() - loop_start
-        if time_diff < 0.16:
+        if screen and time_diff < 0.05:
             time.sleep(0.25 - time_diff)
 
         iterations += 1
-        screen.addstr(cavern.map_height + 1, 0, 'Iteration {}'.format(iterations))
-        screen.refresh()
-        screen.clear()
+        if screen:
+            screen.addstr(cavern.map_height + 1, 0, 'Iteration {}'.format(iterations))
+            screen.refresh()
+            screen.clear()
     print 'Part 1:', None
     print 'Part 2:', None
 
@@ -293,9 +329,10 @@ def debug(stdscr):
 
 
 if __name__ == '__main__':
+    is_part_2 = 'part_2' in sys.argv
     if 'debug' in sys.argv:
-        cProfile.run('main(None, "{}")'.format(sys.argv[1]))
+        cProfile.run('main(None, "{}", {})'.format(sys.argv[1], is_part_2))
     elif 'no_screen' in sys.argv:
-        main(None, sys.argv[1])
+        main(None, sys.argv[1], is_part_2)
     else:
-        curses.wrapper(main, sys.argv[1])
+        curses.wrapper(main, sys.argv[1], is_part_2)
