@@ -1,9 +1,9 @@
 
+import cProfile
 from collections import deque
 import math
 import sys
-from itertools import groupby
-from operator import attrgetter, itemgetter
+from operator import attrgetter
 
 import curses
 
@@ -39,6 +39,10 @@ class Entity(object):
     def sort_order(self):
         return self.y * 100 + self.x
 
+    def move(self, position):
+        self.x = position.x
+        self.y = position.y
+
 
 class Cavern(object):
     @classmethod
@@ -71,20 +75,6 @@ class Cavern(object):
         # Entities
         for idx, entity in enumerate(self.initiative_order()):
             self.screen.addch(entity.y, entity.x, entity.race)
-        # In Range
-        in_range = self.in_range(self.elves[0], self.goblins)
-        for position in in_range:
-            self.screen.addch(position.y, position.x, '?')
-        # Closest
-        chosen_in_range = self.closest(self.elves[0], in_range)
-        self.screen.addch(chosen_in_range.y, chosen_in_range.x, '!', curses.A_BOLD)
-
-        paths = sorted(
-            self.paths_to(self.elves[0].position, chosen_in_range),
-            key=lambda path: (path[0].y, path[0].x)
-        )
-        for step in paths[0]:
-            self.screen.addch(step.y, step.x, 'x')
 
         self.screen.refresh()
 
@@ -96,6 +86,46 @@ class Cavern(object):
     def goblins(self):
         return [entity for entity in self.entities if entity.race == 'G']
 
+    def step(self):
+        for entity in self.initiative_order():
+            self.elf_positions = set(entity.position for entity in self.elves)
+            self.goblin_positions = set(entity.position for entity in self.goblins)
+            self.occupied = self.elf_positions.union(self.goblin_positions)
+            if not self.can_attack(entity):
+                self.move(entity)
+
+            self.attack(entity)
+
+    def can_attack(self, entity):
+        if entity.race == 'G':
+            return any(neighbour in self.elf_positions for neighbour in self.neighbours(entity))
+        else:
+            return any(neighbour in self.goblin_positions for neighbour in self.neighbours(entity))
+
+    def move(self, entity):
+        in_range = self.in_range(entity, self.enemies(entity))
+        if not in_range:
+            return
+        chosen_in_range = self.closest(entity, in_range)
+        if not chosen_in_range:
+            return
+        paths = sorted(
+            self.paths_to(entity.position, chosen_in_range),
+            key=lambda path: (path[0].y, path[0].x)
+        )
+        if paths:
+            entity.move(paths[0][0])
+            self.flow_fields = {}
+
+    def attack(self, entity):
+        pass
+
+    def enemies(self, entity):
+        if entity.race == 'G':
+            return self.elves
+        else:
+            return self.goblins
+
     def in_range(self, entity, targets):
         return [
             position
@@ -105,23 +135,17 @@ class Cavern(object):
         ]
 
     def closest(self, entity, positions):
-        cosest_nodes = [
-            position_pair[0]
-            for position_pair in next(
-                groupby(
-                    sorted(
-                        [
-                            (position, self.distance_to(entity.position, position))
-                            for position in positions
-                            if self.can_be_reached(entity.position, position)
-                        ],
-                        key=itemgetter(1)
-                    ),
-                    key=itemgetter(1)
-                )
-            )[1]
-        ]
-        return min(cosest_nodes, key=attrgetter('y', 'x'))
+        distances = {}
+        min_distance = float('inf')
+        for pos in positions:
+            if not self.can_be_reached(entity.position, pos):
+                continue
+            distance = self.distance_to(entity.position, pos)
+            distances.setdefault(distance, []).append(pos)
+            min_distance = min(distance, min_distance)
+        if not distances:
+            return
+        return min(distances.get(min_distance), key=attrgetter('y', 'x'))
 
     def distance_to(self, start, end):
         flow_field = self.get_flow_field(start)
@@ -132,25 +156,23 @@ class Cavern(object):
         return end in flow_field
 
     def paths_to(self, start, end):
-        def recursive(nodes, target, start):
+        def recursive(nodes, target):
             paths = []
             for parent in nodes[target][0]:
-                if parent == start:
-                    continue
-                child_paths = recursive(nodes, parent, start)
+                child_paths = recursive(nodes, parent)
                 if child_paths:
                     paths.extend([
-                        [parent] + child_path
+                        [target] + child_path
                         for child_path in child_paths
                     ])
                 else:
-                    paths.append([parent])
+                    paths.append([target])
             return paths
 
         flow_field = self.get_flow_field(start)
         return [
             path[::-1]
-            for path in recursive(flow_field, end, start)
+            for path in recursive(flow_field, end)
         ]
 
     def get_flow_field(self, start):
@@ -194,13 +216,12 @@ class Cavern(object):
                 Position(target.x + change[0], target.y + change[1])
                 for change in [(0, -1), (1, 0), (0, 1), (-1, 0)]
             ]
-            if self.is_valid(position)
         ]
 
     def is_valid(self, position):
         return (
             self.graph[position] != '#' and
-            position not in [entity.position for entity in self.entities]
+            position not in self.occupied
         )
 
 
@@ -208,9 +229,18 @@ def main(screen, input_filename):
     with open(input_filename) as stream:
         cavern = Cavern.from_input(stream.read().strip(), screen)
 
-    cavern.draw()
+    command = 'c'
+    while True:
+        if screen:
+            cavern.draw()
+            if command == 'c':
+                command = curses_raw_input(
+                    screen, cavern.map_height + 1, '[C]ontinue / [S]top / [R]un: '
+                ).lower()
+            if command == 's':
+                break
+        cavern.step()
 
-    curses_raw_input(screen, cavern.map_height + 5, 'Close?')
     print 'Part 1:', None
     print 'Part 2:', None
 
@@ -232,4 +262,9 @@ def debug(stdscr):
 
 
 if __name__ == '__main__':
-    curses.wrapper(main, sys.argv[1])
+    if 'debug' in sys.argv:
+        cProfile.run('main(None, "{}")'.format(sys.argv[1]))
+    if 'no_screen' in sys.argv:
+        main(None, sys.argv[1])
+    else:
+        curses.wrapper(main, sys.argv[1])
