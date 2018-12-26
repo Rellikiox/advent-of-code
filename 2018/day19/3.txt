@@ -1,0 +1,14 @@
+target = 10551248
+result = 0
+
+divisor = 1
+while divisor <= target:
+    counter = 1
+
+    while counter <= target:
+        if counter * divisor == target:
+            result += divisor
+
+        counter += 1
+
+    divisor += 1
