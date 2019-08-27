@@ -1,0 +1,32 @@
+
+_OUT_LOOP_: R5 = R2 | 65536
+07: R2 = 4843319
+
+    _IN_LOOP_:
+    08: R4 = R5 & 255
+    09: R2 = R2 + R4
+    10: R2 = R2 & 16777215
+    11: R2 = R2 * 65899
+    12: R2 = R2 & 16777215
+    13:
+    14: GOTO _EXIT_COND_ if 256 > R5
+    15:
+    16:
+    17: R4 = 0
+
+    _IN_IN_LOOP_: R3 = R4 + 1
+    19: R3 = R3 * 256
+    20:
+    21: GOTO 26 if R3 > R5
+    22:
+    23:
+    24: R4 = R4 + 1
+    25: GOTO _IN_IN_LOOP_
+
+    26: R5 = R4
+    27: GOTO _IN_LOOP_
+
+_EXIT_COND_:
+    28:
+    29: GOTO _OUT_LOOP_ if R2 != R0
+    30:
