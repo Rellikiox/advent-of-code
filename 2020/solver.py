@@ -7,7 +7,6 @@ import importlib
 
 source_file_template = '''
 
-
 def parse_data(data):
     return data
 
@@ -26,24 +25,40 @@ def download():
     download_url = f'https://adventofcode.com/2020/day/{day}/input'
     instructions_url = f'https://adventofcode.com/2020/day/{day}'
     input_filename = f'day_{day:02d}.txt'
+    test_input_filename = f'day_{day:02d}.test.txt'
     source_filename = f'day_{day:02d}.py'
     
     print(f'Setting up day #{day}:')
 
-    with open(source_filename, 'w') as stream:
-        stream.write(source_file_template)
-    print(f'\t> Created {source_filename}')
-
-    cookies = {
-        'session': '53616c7465645f5fb405a110350cd0da50c2971545e43a9ef6f72d3c0acf376a'
-    }
-    response = requests.get(download_url, cookies=cookies)
-    if response.status_code == 200:
-        with open(input_filename, 'wb') as stream:
-            stream.write(response.content)
-        print(f'\t> Downloaded input file to {input_filename}')
+    if not os.path.isfile(source_filename):
+        with open(source_filename, 'w') as stream:
+            stream.write(source_file_template)
+        print(f'\t> Created {source_filename}')
     else:
-        print('\t> No input data found')
+        print(f'\t> {source_filename} already exists, skipping creation')
+
+    if not os.path.isfile(input_filename):
+        cookies = {
+            'session': '53616c7465645f5fb405a110350cd0da50c2971545e43a9ef6f72d3c0acf376a'
+        }
+        response = requests.get(download_url, cookies=cookies)
+        if response.status_code == 200:
+            with open(input_filename, 'wb') as stream:
+                stream.write(response.content)
+            print(f'\t> Downloaded input file to {input_filename}')
+        else:
+            print('\t> No input data found')
+    else:
+        print(f'\t> {input_filename} already exists, skipping download')
+
+    if not os.path.isfile(test_input_filename):
+        with open(test_input_filename, 'w') as stream:
+            pass
+        print(f'\t> Created empty test input file {test_input_filename}')
+    else:
+        print(f'\t> {test_input_filename} already exists, skipping creation')
+
+        
 
     print(f'\t> Instructions at {instructions_url}')
 
