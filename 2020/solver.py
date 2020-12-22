@@ -60,8 +60,11 @@ def run(test_mode=False):
     else:
         data = None
 
-    module.part1(data)
-    module.part2(data)
+    if test_mode and hasattr(module, 'test'):
+        module.test(data)
+    else:
+        module.part1(data)
+        module.part2(data)
 
 
 if __name__ == '__main__':
